@@ -86,5 +86,6 @@ Les couleurs de l'interface sont centralisées dans la pseudo-classe `:root` CSS
 * **Historique des coups** : Ajout d'un système de notation des coups et d'une fonctionnalité "Annuler le coup" (*Undo*).
 
 ---
+## ✍️ Auteur
 
-Si tu souhaites modifier la logique pour basculer sur un plateau international standard de 100 cases ($10 \times 10$) ou injecter une IA en arrière-plan, fais-le moi savoir, Mathieu. Quel est l'objectif principal de ton étape actuelle sur ce code ?
+  * **Mathieu** - *Programming student, specialization Machine Learning* - [👤 My Github profile](https://github.com/Mathieu7483)
