@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeu de Dames Professionnel - v4.0</title>
+    <style>
+        :root {
+            --bg-color: #0a0f1d;
+            --board-light: #f0d9b5;
+            --board-dark: #b58863;
+            --pawn-white: #f5f5f5;
+            --pawn-black: #1a1a1a;
+            --highlight: rgba(0, 255, 128, 0.4);
+            --capture-highlight: rgba(255, 40, 40, 0.6);
+            --selected: rgba(255, 200, 0, 0.5);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: #fff;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .header-panel {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        h1 { margin: 0 0 5px 0; font-size: 26px; letter-spacing: 3px; color: #7ac8e0; }
+        
+        .scoreboard {
+            display: flex;
+            gap: 40px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            background: rgba(255,255,255,0.05);
+            padding: 6px 20px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #status { font-size: 16px; color: #00ffcc; font-weight: bold; min-height: 22px;}
+
+        .board {
+            display: grid;
+            grid-template-rows: repeat(8, 65px);
+            grid-template-columns: repeat(8, 65px);
+            border: 8px solid #3a2211;
+            border-radius: 4px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.8);
+            position: relative;
+        }
+
+        .cell {
+            width: 65px;
+            height: 65px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .light { background-color: var(--board-light); }
+        .dark { background-color: var(--board-dark); }
+
+        .pawn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.6), 0 5px 8px rgba(0,0,0,0.5);
+            position: relative;
+            z-index: 2;
+            transition: transform 0.25s ease-out, background-color 0.2s;
+        }
+
+        .pawn.white { background-color: var(--pawn-white); border: 2px solid #dcdcdc; }
+        .pawn.black { background-color: var(--pawn-black); border: 2px solid #050505; }
+
+        .pawn.king::after {
+            content: '👑';
+            position: absolute;
+            top: 52%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+        }
+
+        .cell.selected::before {
+            content: ''; position: absolute; inset: 0;
+            background-color: var(--selected); z-index: 1;
+        }
+
+        .cell.possible-move::after {
+            content: ''; width: 16px; height: 16px;
+            background-color: var(--highlight); border-radius: 50%;
+            position: absolute; z-index: 3;
+        }
+
+        .cell.possible-capture::after {
+            content: ''; width: 22px; height: 22px;
+            background-color: var(--capture-highlight); border-radius: 50%;
+            position: absolute; z-index: 3;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-panel">
+        <h1>JEU DE DAMES</h1>
+        <div class="scoreboard">
+            <span style="color: #00d4ff">Blancs : <b id="count-W">12</b></span>
+            <span style="color: #aa44ff">Noirs : <b id="count-B">12</b></span>
+        </div>
+        <div id="status">Tour : Blancs</div>
+    </div>
+
+    <div class="board" id="board"></div>
+
+    <script>
+        const boardElement = document.getElementById('board');
+        const statusElement = document.getElementById('status');
+        
+        let boardState = [
+            [null, 'B', null, 'B', null, 'B', null, 'B'],
+            ['B', null, 'B', null, 'B', null, 'B', null],
+            [null, 'B', null, 'B', null, 'B', null, 'B'],
+            [null, null, null, null, null, null, null, null],
+            [null, null, null, null, null, null, null, null],
+            ['W', null, 'W', null, 'W', null, 'W', null],
+            [null, 'W', null, 'W', null, 'W', null, 'W'],
+            ['W', null, 'W', null, 'W', null, 'W', null]
+        ];
+
+        let selectedPiece = null; 
+        let currentPlayer = 'W';  
+        let movesAvailable = []; 
+        let isChainCapturing = false;
+
+        function updateScoreboard() {
+            let countW = 0, countB = 0;
+            for(let r=0; r<8; r++) {
+                for(let c=0; c<8; c++) {
+                    if (boardState[r][c]?.endsWith('W')) countW++;
+                    if (boardState[r][c]?.endsWith('B')) countB++;
+                }
+            }
+            document.getElementById('count-W').textContent = countW;
+            document.getElementById('count-B').textContent = countB;
+        }
+
+        function createBoard() {
+            boardElement.innerHTML = '';
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell', (r + c) % 2 === 1 ? 'dark' : 'light');
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+
+                    const piece = boardState[r][c];
+                    if (piece) {
+                        const pawn = document.createElement('div');
+                        pawn.classList.add('pawn', (piece.endsWith('W')) ? 'white' : 'black');
+                        if (piece.startsWith('K')) pawn.classList.add('king');
+                        cell.appendChild(pawn);
+                    }
+
+                    cell.addEventListener('click', onCellClick);
+                    boardElement.appendChild(cell);
+                }
+            }
+            updateScoreboard();
+        }
+
+        function getPlayerCaptures(player) {
+            let captures = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (boardState[r][c] && boardState[r][c].endsWith(player)) {
+                        let pieceCaptures = getPieceMoves(r, c).filter(m => m.type === 'capture');
+                        captures = captures.concat(pieceCaptures);
+                    }
+                }
+            }
+            return captures;
+        }
+
+        function getPieceMoves(r, c) {
+            const piece = boardState[r][c];
+            if (!piece) return [];
+
+            let moves = [];
+            const isKing = piece.startsWith('K');
+            const player = piece.endsWith('W') ? 'W' : 'B';
+            const enemy = player === 'W' ? 'B' : 'W';
+
+            let diagDirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+            // 1. RECHERCHE DES CAPTURES
+            diagDirs.forEach(([dr, dc]) => {
+                if (isKing) {
+                    // Mouvement de capture de la Dame (longue portée)
+                    let enemyFound = null;
+                    let tr = r + dr;
+                    let tc = c + dc;
+                    while (tr >= 0 && tr < 8 && tc >= 0 && tc < 8) {
+                        let currentPiece = boardState[tr][tc];
+                        if (currentPiece) {
+                            if (currentPiece.endsWith(enemy) && !enemyFound) {
+                                enemyFound = { r: tr, c: tc };
+                            } else {
+                                break; // Bloqué par une deuxième pièce ou une pièce alliée
+                            }
+                        } else if (enemyFound) {
+                            moves.push({
+                                from: {r, c}, to: {r: tr, col: tc},
+                                captured: {r: enemyFound.r, c: enemyFound.c}, type: 'capture'
+                            });
+                        }
+                        tr += dr; tc += dc;
+                    }
+                } else {
+                    // Capture pion normal
+                    let enemyRow = r + dr, enemyCol = c + dc;
+                    let targetRow = r + (dr * 2), targetCol = c + (dc * 2);
+                    if (targetRow >= 0 && targetRow < 8 && targetCol >= 0 && targetCol < 8) {
+                        let mid = boardState[enemyRow][enemyCol];
+                        if (mid && mid.endsWith(enemy) && boardState[targetRow][targetCol] === null) {
+                            moves.push({
+                                from: {r, c}, to: {r: targetRow, col: targetCol},
+                                captured: {r: enemyRow, c: enemyCol}, type: 'capture'
+                            });
+                        }
+                    }
+                }
+            });
+
+            // 2. RECHERCHE DES COUPS SIMPLES
+            if (isKing) {
+                // Déplacement simple de la Dame (toute la diagonale libre)
+                diagDirs.forEach(([dr, dc]) => {
+                    let tr = r + dr; let tc = c + dc;
+                    while (tr >= 0 && tr < 8 && tc >= 0 && tc < 8 && boardState[tr][tc] === null) {
+                        moves.push({ from: {r, c}, to: {r: tr, col: tc}, type: 'simple' });
+                        tr += dr; tc += dc;
+                    }
+                });
+            } else {
+                // Déplacement simple du pion normal
+                let forwardDirs = player === 'W' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]];
+                forwardDirs.forEach(([dr, dc]) => {
+                    let tr = r + dr; let tc = c + dc;
+                    if (tr >= 0 && tr < 8 && tc >= 0 && tc < 8 && boardState[tr][tc] === null) {
+                        moves.push({ from: {r, c}, to: {r: tr, col: tc}, type: 'simple' });
+                    }
+                });
+            }
+
+            return moves;
+        }
+
+        function hasAnyValidMoves(player) {
+            let globalCaptures = getPlayerCaptures(player);
+            if (globalCaptures.length > 0) return true;
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (boardState[r][c]?.endsWith(player)) {
+                        if (getPieceMoves(r, c).filter(m => m.type === 'simple').length > 0) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function onCellClick(e) {
+            const cell = e.currentTarget;
+            const r = parseInt(cell.dataset.row);
+            const c = parseInt(cell.dataset.col);
+
+            if (isChainCapturing) {
+                if (selectedPiece?.row === r && selectedPiece?.col === c) return;
+                handleTargetSelection(r, c);
+                return;
+            }
+
+            if (boardState[r][c]?.endsWith(currentPlayer)) {
+                clearHighlights();
+                let globalCaptures = getPlayerCaptures(currentPlayer);
+                let allPieceMoves = getPieceMoves(r, c);
+                
+                movesAvailable = globalCaptures.length > 0 
+                    ? allPieceMoves.filter(m => m.type === 'capture')
+                    : allPieceMoves.filter(m => m.type === 'simple');
+
+                if (movesAvailable.length > 0) {
+                    selectedPiece = { row: r, col: c };
+                    cell.classList.add('selected');
+                    highlightMoves();
+                }
+                return;
+            }
+
+            handleTargetSelection(r, c);
+        }
+
+        function handleTargetSelection(r, c) {
+            if (!selectedPiece) return;
+            let matchedMove = movesAvailable.find(m => m.to.r === r && m.to.col === c);
+            
+            if (matchedMove) {
+                executeMove(matchedMove);
+                clearHighlights();
+
+                if (matchedMove.type === 'capture') {
+                    let consecutiveMoves = getPieceMoves(r, c).filter(m => m.type === 'capture');
+                    if (consecutiveMoves.length > 0) {
+                        isChainCapturing = true;
+                        selectedPiece = { row: r, col: c };
+                        movesAvailable = consecutiveMoves;
+                        document.querySelector(`[data-row="${r}"][data-col="${c}"]`)?.classList.add('selected');
+                        highlightMoves();
+                        return; 
+                    }
+                }
+
+                isChainCapturing = false;
+                selectedPiece = null;
+                movesAvailable = [];
+                switchPlayer();
+            } else if (!isChainCapturing) {
+                clearHighlights();
+                selectedPiece = null;
+                movesAvailable = [];
+            }
+        }
+
+        function highlightMoves() {
+            movesAvailable.forEach(m => {
+                const targetCell = document.querySelector(`[data-row="${m.to.r}"][data-col="${m.to.col}"]`);
+                targetCell?.classList.add(m.type === 'capture' ? 'possible-capture' : 'possible-move');
+            });
+        }
+
+        function executeMove(move) {
+            let piece = boardState[move.from.r][move.from.c];
+
+            if (move.type === 'capture') {
+                boardState[move.captured.r][move.captured.c] = null;
+            }
+
+            if (piece === 'W' && move.to.r === 0) piece = 'KW';
+            if (piece === 'B' && move.to.r === 7) piece = 'KB';
+
+            boardState[move.to.r][move.to.col] = piece;
+            boardState[move.from.r][move.from.c] = null;
+
+            createBoard();
+        }
+
+        function switchPlayer() {
+            currentPlayer = (currentPlayer === 'W') ? 'B' : 'W';
+            
+            if (!hasAnyValidMoves(currentPlayer)) {
+                let winner = (currentPlayer === 'W') ? 'Noirs' : 'Blancs';
+                statusElement.textContent = `🎉 FIN DE PARTIE : Victoire des ${winner} !`;
+                statusElement.style.color = '#00ffcc';
+                currentPlayer = null; // Bloque le jeu
+                return;
+            }
+
+            statusElement.textContent = `Tour : ${currentPlayer === 'W' ? 'Blancs' : 'Noirs'}`;
+            statusElement.style.color = (currentPlayer === 'W') ? '#00d4ff' : '#aa44ff';
+        }
+
+        function clearHighlights() {
+            document.querySelectorAll('.cell').forEach(cell => {
+                cell.classList.remove('selected', 'possible-move', 'possible-capture');
+            });
+        }
+
+        createBoard();
+    </script>
+</body>
+</html>
